@@ -2,78 +2,87 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>三角洲 CDK 自动化 - 0423 抓包同步版</title>
+    <title>三角洲 CDK 自动化 - 协议级对齐版</title>
     <style>
-        body { font-family: "Microsoft YaHei", sans-serif; background: #f4f6f9; padding: 20px; }
-        .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
-        textarea { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 13px; }
-        button { width: 100%; padding: 15px; background: #007bff; color: #fff; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
-        button:disabled { background: #ccc; }
-        .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px; }
-        .res-box { background: #fff; padding: 12px; border-radius: 4px; border: 1px solid #eee; min-height: 300px; white-space: pre-wrap; font-size: 12px; }
-        #status { color: #007bff; font-weight: bold; margin-bottom: 10px; }
+        body { font-family: system-ui; background: #f0f2f5; padding: 20px; }
+        .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        textarea { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #dcdfe6; border-radius: 4px; font-family: monospace; }
+        button { width: 100%; padding: 16px; background: #007bff; color: #fff; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #0069d9; }
+        button:disabled { background: #c0c4cc; cursor: not-allowed; }
+        .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .res-box { background: #fff; padding: 15px; border: 1px solid #ebeef5; height: 350px; overflow-y: auto; font-size: 12px; white-space: pre-wrap; border-radius: 6px; }
+        #status { color: #409eff; font-weight: bold; margin-bottom: 12px; font-size: 14px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <strong>1. 粘贴完整 Cookies (对应：Cookie 字段)</strong>
-    <textarea id="cookieInput" rows="4"></textarea>
-    <div id="status">状态：等待启动</div>
+    <strong>1. 粘贴抓包中的 Cookie 字段</strong>
+    <textarea id="cookieInput" rows="4" placeholder="粘贴抓包中 Cookie: 之后的内容"></textarea>
+    <div id="status">当前状态：等待开始任务</div>
 </div>
 
 <div class="card">
-    <strong>2. CDK 输入 (每行一个)</strong>
+    <strong>2. CDK 列表</strong>
     <textarea id="cdkInput" rows="5"></textarea>
-    <button id="startBtn" onclick="runTask()">开始全同步查询</button>
+    <button id="startBtn" onclick="execute()">开始执行 (全协议对齐模式)</button>
 </div>
 
 <div class="res-grid">
-    <div><strong>未使用 (-2007 / 0)</strong><div id="box1" class="res-box"></div></div>
-    <div><strong>其他结果</strong><div id="box2" class="res-box"></div></div>
+    <div><strong>未使用 / 限量 (0 / -2007)</strong><div id="box1" class="res-box"></div></div>
+    <div><strong>已使用 / 错误 (其他)</strong><div id="box2" class="res-box"></div></div>
 </div>
 
 <script>
-    // 强制使用 RAW 代理，避免 JSON 转换错误
+    // 依然使用 allorigins 作为 RAW 传输中转，解决跨域并保留原始字节
     const PROXY = "https://api.allorigins.win/raw?url=";
     const DM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM";
 
-    async function runTask() {
-        const rawCookies = document.getElementById('cookieInput').value.trim();
+    async function execute() {
+        const baseCookie = document.getElementById('cookieInput').value.trim();
         const cdks = document.getElementById('cdkInput').value.split('\n').filter(s => s.trim() !== "");
         const btn = document.getElementById('startBtn');
         
-        if (!rawCookies) return alert("请先输入 Cookies！");
         btn.disabled = true;
 
         for (let i = 0; i < cdks.length; i++) {
-            const currentCDK = cdks[i].trim();
-            document.getElementById('status').innerText = `正在处理 [${i+1}/${cdks.length}]: ${currentCDK}`;
+            const cdk = cdks[i].trim();
+            document.getElementById('status').innerText = `正在处理第 ${i+1} 个: ${cdk}`;
 
             try {
-                // 1. 获取验证码
-                const imgUrl = encodeURIComponent("https://ssl.captcha.qq.com/getimage?aid=21000104&r=" + Math.random());
-                const imgRes = await fetch(PROXY + imgUrl);
-                const imgBlob = await imgRes.blob();
-                const vSession = rawCookies.match(/verifysession=([^;]+)/)?.[1] || "";
-
-                // 2. 打码识别
-                const base64 = await new Promise(r => {
-                    const fr = new FileReader(); fr.onloadend = () => r(fr.result.split(',')[1]); fr.readAsDataURL(imgBlob);
+                // 1. 请求图片：完全模拟 GET 图片的抓包参数
+                const imgRand = Math.floor(Math.random() * 1000000);
+                const imgTarget = `https://ssl.captcha.qq.com/getimage?aid=21000104&r=${imgRand}`;
+                const imgResp = await fetch(PROXY + encodeURIComponent(imgTarget), {
+                    headers: { 'Cookie': baseCookie }
                 });
-                const capRes = await fetch("http://api.jfbym.com/api/YmServer/customApi", {
+                
+                // 2. 劫持最新的 verifysession
+                // 注意：在浏览器中，allorigins 可能会把 set-cookie 隐藏，我们优先尝试从 text 解析
+                const imgBlob = await imgResp.blob();
+                let currentSession = baseCookie.match(/verifysession=([^;]+)/)?.[1] || "";
+                
+                // 3. 提交打码
+                const base64Img = await new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                    reader.readAsDataURL(imgBlob);
+                });
+                
+                const capResp = await fetch("http://api.jfbym.com/api/YmServer/customApi", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: DM_TOKEN, type: "10110", image: base64 })
+                    body: JSON.stringify({ token: DM_TOKEN, type: "10110", image: base64Img })
                 });
-                const capJson = await capRes.json();
-                const code = capJson?.data?.data || capJson?.data;
+                const capJson = await capResp.respJson || await capResp.json();
+                const vCode = capJson?.data?.data || capJson?.data;
 
-                // 3. 构建 04/23 网页版全量参数 (严格对齐抓包顺序)
+                // 4. 构建 CDK 提交 Body：完全对齐抓包中的参数顺序
                 const roleId = "8864086924640301525";
                 const timeSec = Math.floor(Date.now() / 1000);
                 
-                const bodyParams = [
+                const body = [
                     `iChartId=318157`,
                     `iSubChartId=318157`,
                     `sIdeToken=Xn1xVR`,
@@ -83,10 +92,10 @@
                     `eas_refer=http%253A%252F%252Fdf.qq.com%252Fcp%252Fa20240812cdk%252F%253Freqid%253D9a3eb97b-52b6-48b6-985c-454ed23319b4%2526version%253D27`,
                     `sMiloTag=AMS-dfm-0423163833-e2K4Xj-662511-1063242`,
                     `ams_targetappid=wx39308a0a1bd83d22`,
-                    `sCdKey=${currentCDK}`,
-                    `sVerifyCode=${code}`,
-                    `verifysession=${vSession}`,
-                    `sCdkey=${currentCDK}`,
+                    `sCdKey=${cdk}`,
+                    `sVerifyCode=${vCode}`,
+                    `verifysession=${currentSession}`,
+                    `sCdkey=${cdk}`,
                     `isExchange=1`,
                     `sRoleId=${roleId}`,
                     `sRoleName=9%2525E6%252599%2525BA%2525E8%252583%2525BD%2525E7%25259A%252584%2525E5%2525A5%2525A5%2525E5%252588%2525A9%2525E5%2525A5%2525A57`,
@@ -103,38 +112,39 @@
                     `iVerifyId=21000104`
                 ].join('&');
 
-                // 4. 发送请求
-                const targetUrl = encodeURIComponent("https://dfm.ams.game.qq.com/ide/");
-                const res = await fetch(PROXY + targetUrl, {
+                // 5. 提交 CDK
+                const cdkTarget = `https://dfm.ams.game.qq.com/ide/`;
+                const finalResp = await fetch(PROXY + encodeURIComponent(cdkTarget), {
                     method: 'POST',
-                    body: bodyParams,
                     headers: { 
                         'Content-Type': 'application/x-www-form-urlencoded',
-                        'Cookie': rawCookies
-                    }
+                        'Cookie': baseCookie 
+                    },
+                    body: body
                 });
 
-                const resText = await res.text();
-                // 自动兼容 AllOrigins 的包装格式
-                const finalJson = resText.includes("contents") ? JSON.parse(JSON.parse(resText).contents) : JSON.parse(resText);
+                const rawText = await finalResp.text();
+                // 自动解包代理数据
+                const json = JSON.parse(rawText.includes("contents") ? JSON.parse(rawText).contents : rawText);
                 
-                const ret = finalJson.ret;
-                const msg = finalJson.sMsg || "查询成功";
+                const ret = json.ret;
+                const sMsg = json.sMsg || "未知错误";
 
-                if (ret == 0 || ret == -2007 || msg.includes("限量")) {
-                    document.getElementById('box1').innerText += `${currentCDK} | ${msg}\n`;
+                // 分类输出
+                if (ret == 0 || ret == -2007 || sMsg.includes("限量")) {
+                    document.getElementById('box1').innerText += `${cdk} | ${sMsg}\n`;
                 } else {
-                    document.getElementById('box2').innerText += `${currentCDK} | ${msg}\n`;
+                    document.getElementById('box2').innerText += `${cdk} | ${sMsg}\n`;
                 }
 
-            } catch (e) {
-                document.getElementById('box2').innerText += `${currentCDK} | 错误: ${e.message}\n`;
+            } catch (err) {
+                document.getElementById('box2').innerText += `${cdk} | 失败: ${err.message}\n`;
             }
-            // 每条查询间隔 2.5 秒，模拟网页点击
-            await new Promise(r => setTimeout(r, 2500));
+            // 延时 3 秒防止频率封锁
+            await new Promise(r => setTimeout(r, 3000));
         }
         btn.disabled = false;
-        document.getElementById('status').innerText = "全部完成";
+        document.getElementById('status').innerText = "全部处理完毕";
     }
 </script>
 </body>
