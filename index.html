@@ -2,97 +2,132 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>三角洲 CDK 查询 - 最终修正版</title>
+    <title>三角洲 CDK 自动化查询 - 原生封包克隆版</title>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
-        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; }
-        .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
-        textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; }
-        button { width: 100%; padding: 15px; background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        :root { --primary: #007bff; --bg: #f8f9fa; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); padding: 15px; margin: 0; }
+        .card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); margin-bottom: 15px; }
+        .title { font-weight: bold; margin-bottom: 10px; border-left: 4px solid var(--primary); padding-left: 10px; }
+        textarea { width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-size: 13px; background: #fafafa; font-family: monospace; }
+        button { width: 100%; padding: 16px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         button:disabled { background: #ccc; }
-        .res-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .res-box { background: #fff; padding: 10px; border: 1px solid #eee; min-height: 200px; white-space: pre-wrap; font-size: 12px; }
-        .log { color: #007bff; font-weight: bold; margin: 10px 0; }
+        .log { font-size: 13px; color: var(--primary); margin: 10px 0; font-weight: bold; }
+        .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .res-box { padding: 12px; border-radius: 8px; font-size: 12px; min-height: 300px; border: 1px solid #eee; white-space: pre-wrap; background: #fff; overflow-y: auto; max-height: 500px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <strong>1. 粘贴完整 Cookie</strong>
-    <textarea id="cookieInput" rows="3"></textarea>
-    <div id="statusLog" class="log">状态：准备就绪</div>
+    <div class="title">1. 粘贴官网抓取的完整 Cookie</div>
+    <textarea id="cookieInput" rows="3" placeholder="eas_sid=...; access_token=..."></textarea>
+    <div id="statusLog" class="log">等待操作...</div>
 </div>
 
 <div class="card">
-    <strong>2. CDK 列表</strong>
-    <textarea id="cdkInput" rows="5" placeholder="每行一个"></textarea>
-    <button id="startBtn" onclick="run()">开始同步查询</button>
+    <div class="title">2. CDK 列表</div>
+    <textarea id="cdkInput" rows="5" placeholder="每行一个 CDK"></textarea>
+    <button id="startBtn" onclick="run()">同步官网原生逻辑开始查询</button>
 </div>
 
-<div class="res-container">
-    <div><strong>未使用 (-2007/0)</strong><div id="box1" class="res-box"></div></div>
-    <div><strong>其他结果</strong><div id="box2" class="res-box"></div></div>
+<div class="res-grid">
+    <div><strong>未使用/可用 (-2007/0)</strong><div id="box1" class="res-box"></div></div>
+    <div><strong>其他结果 (已用/错误)</strong><div id="box2" class="res-box"></div></div>
 </div>
 
 <script>
-    // 务必确保授权代理：https://cors-anywhere.herokuapp.com/corsdemo
-    const PROXY = "https://cors-anywhere.herokuapp.com/";
-    const DM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM";
+    // 必须要先授权：https://cors-anywhere.herokuapp.com/corsdemo
+    const PROXY = "https://cors-anywhere.herokuapp.com/"; 
+    const DM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM"; 
 
     async function run() {
         const rawCookies = document.getElementById('cookieInput').value.trim();
         const cdks = document.getElementById('cdkInput').value.split('\n').filter(s => s.trim() !== "");
         const btn = document.getElementById('startBtn');
         
-        if (!rawCookies) return alert("请先粘贴 Cookie！");
+        if (!rawCookies) return alert("请粘贴 Cookie！");
         btn.disabled = true;
 
         for (let cdk of cdks) {
             try {
                 document.getElementById('statusLog').innerText = `正在处理: ${cdk}`;
-                
+
                 // 1. 获取验证码
                 const imgRes = await axios.get(PROXY + "https://ssl.captcha.qq.com/getimage?aid=21000104&r=" + Math.random(), { 
                     responseType: 'arraybuffer', headers: { 'Cookie': rawCookies } 
                 });
-                const vSession = imgRes.headers['set-cookie']?.find(s => s.includes('verifysession'))?.split(';')[0] || "";
-                const vSessionVal = vSession.split('=')[1] || "";
+                
+                // 提取最新的 verifysession
+                const setCookie = imgRes.headers['set-cookie'] || [];
+                const vSessionPair = setCookie.find(s => s.includes('verifysession')) || "";
+                const vSessionVal = vSessionPair.split(';')[0].split('=')[1] || "";
 
                 // 2. 识别验证码
                 const base64Img = btoa(new Uint8Array(imgRes.data).reduce((d, b) => d + String.fromCharCode(b), ''));
                 const capRes = await axios.post(PROXY + "http://api.jfbym.com/api/YmServer/customApi", { token: DM_TOKEN, type: "10110", image: base64Img });
                 const code = capRes.data?.data?.data || capRes.data?.data;
 
-                if (!code) throw new Error("验证码识别失败");
+                if (!code || !vSessionVal) throw new Error("打码或Session获取失败");
 
-                // 3. 构建 Body (严格对齐你成功的封包内容)
+                // 3. 构建【完全同步官网】的 Body 字符串
                 const roleId = "8864086924640301525";
-                const body = `iChartId=318157&iSubChartId=318157&sIdeToken=Xn1xVR&e_code=0&g_code=0&eas_url=http%253A%252F%252Fdf.qq.com%252Fcp%252Fa20240812cdk%252F&eas_refer=http%253A%252F%252Fdf.qq.com%252Fcp%252Fa20240812cdk%252F%253Freqid%253D8eee93c7-e0b8-49ab-8bfb-a9407ebf83e2%2526version%253D27&sMiloTag=AMS-dfm-0423154212-YDPptO-662511-1063242&ams_targetappid=wx39308a0a1bd83d22&sCdKey=${cdk.trim()}&sVerifyCode=${code}&verifysession=${vSessionVal}&sCdkey=${cdk.trim()}&isExchange=1&sRoleId=${roleId}&sRoleName=9%2525E6%252599%2525BA%2525E8%252583%2525BD%2525E7%25259A%252584%2525E5%2525A5%2525A5%2525E5%252588%2525A9%2525E5%2525A5%2525A57&sArea=36&sMd5str=21F66497921BE8DF59455A70CB119716&md5str=21F66497921BE8DF59455A70CB119716&sMdStr=21F66497921BE8DF59455A70CB119716&sCheckparam=dfm%7Cyes%7C${roleId}%7C36%7C${roleId}%2A%7C${roleId}%7C0%7C%7C9%25E6%2599%25BA%25E8%2583%25BD%25E7%259A%2584%25E5%25A5%25A5%25E5%2588%25A9%25E5%25A5%25A57%2A%7C%7C%7C1776926243%7C&roleSex=&roleJob=&sPlatId=0&isPreengage=1&needGopenid=1&iVerifyId=21000104`;
+                // 这里的参数顺序和转义方式完全参考你提供的原生 POST 数据
+                const body = [
+                    `iChartId=318157`,
+                    `iSubChartId=318157`,
+                    `sIdeToken=Xn1xVR`,
+                    `e_code=0`,
+                    `g_code=0`,
+                    `eas_url=http%253A%252F%252Fdf.qq.com%252Fcp%252Fa20240812cdk%252F`,
+                    `eas_refer=http%253A%252F%252Fdf.qq.com%252Fcp%252Fa20240812cdk%252F%253Freqid%253Dd4b5fb3f-3964-4066-8a3e-21035e08c75d%2526version%253D27`,
+                    `sMiloTag=AMS-dfm-0423155916-EkzV57-662511-1063242`,
+                    `ams_targetappid=wx39308a0a1bd83d22`,
+                    `sCdKey=${cdk.trim()}`,
+                    `sVerifyCode=${code}`,
+                    `verifysession=${vSessionVal}`,
+                    `sCdkey=${cdk.trim()}`,
+                    `isExchange=1`,
+                    `sRoleId=${roleId}`,
+                    `sRoleName=9%2525E6%252599%2525BA%2525E8%252583%2525BD%2525E7%25259A%252584%2525E5%2525A5%2525A5%2525E5%252588%2525A9%2525E5%2525A5%2525A57`,
+                    `sArea=36`,
+                    `sMd5str=21F66497921BE8DF59455A70CB119716`,
+                    `md5str=21F66497921BE8DF59455A70CB119716`,
+                    `sMdStr=21F66497921BE8DF59455A70CB119716`,
+                    `sCheckparam=dfm%7Cyes%7C${roleId}%7C36%7C${roleId}%2A%7C${roleId}%7C0%7C%7C9%25E6%2599%25BA%25E8%2583%25BD%25E7%259A%2584%25E5%25A5%25A5%25E5%2588%25A9%25E5%25A5%25A57%2A%7C%7C%7C1776926243%7C`,
+                    `roleSex=`,
+                    `roleJob=`,
+                    `sPlatId=0`,
+                    `isPreengage=1`,
+                    `needGopenid=1`,
+                    `iVerifyId=21000104`
+                ].join('&');
 
                 // 4. 提交
                 const res = await axios.post(PROXY + "https://dfm.ams.game.qq.com/ide/", body, {
                     headers: { 
-                        'Cookie': rawCookies + "; " + vSession,
+                        'Cookie': rawCookies + "; verifysession=" + vSessionVal,
                         'Referer': 'https://df.qq.com/cp/a20240812cdk/index.html',
-                        'Content-Type': 'application/x-www-form-urlencoded'
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Origin': 'https://df.qq.com'
                     }
                 });
 
                 const ret = res.data.ret;
                 const msg = res.data.sMsg || "未知错误";
+                // 修正判定：-2007 (同类已领) 在你的业务中视为未使用
                 const isUnused = (ret == 0 || ret == -2007);
                 
-                const targetBox = isUnused ? 'box1' : 'box2';
-                document.getElementById(targetBox).innerText += `${cdk} | ${msg}\n`;
+                const box = document.getElementById(isUnused ? 'box1' : 'box2');
+                box.innerText += `${cdk} | ${msg}\n`;
 
             } catch (e) {
-                console.error(e);
                 document.getElementById('box2').innerText += `${cdk} | 报错: ${e.message}\n`;
             }
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 3000));
         }
         btn.disabled = false;
-        document.getElementById('statusLog').innerText = `状态：查询完毕`;
+        document.getElementById('statusLog').innerText = `状态：完成`;
     }
 </script>
 </body>
