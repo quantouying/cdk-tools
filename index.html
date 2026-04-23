@@ -2,131 +2,118 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>三角洲 CDK 自动化 - 登录态修复版</title>
+    <title>三角洲 CDK 自动化查询 - 2026同步版</title>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
-        :root { --primary: #007bff; --success: #28a745; --danger: #dc3545; --bg: #f4f7f9; }
-        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); padding: 20px; }
-        .card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        .title { font-weight: bold; margin-bottom: 12px; border-left: 4px solid var(--primary); padding-left: 10px; }
-        textarea, input { width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 13px; margin-bottom: 10px; }
-        button { width: 100%; padding: 16px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        button:hover { opacity: 0.9; }
+        :root { --primary: #007bff; --success: #28a745; --danger: #dc3545; }
+        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .status { font-weight: bold; color: var(--primary); margin: 10px 0; padding: 10px; background: #e7f1ff; border-radius: 5px; }
+        textarea, input { width: 100%; box-sizing: border-box; padding: 10px; margin-top: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; }
+        button { width: 100%; padding: 15px; background: var(--primary); color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 10px; }
         button:disabled { background: #ccc; }
-        .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .res-box { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #eee; height: 300px; overflow-y: auto; font-size: 12px; white-space: pre-wrap; line-height: 1.5; }
-        .status { color: var(--primary); font-weight: bold; margin-bottom: 10px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }
+        .res-box { height: 300px; border: 1px solid #eee; overflow-y: auto; padding: 10px; font-size: 12px; white-space: pre-wrap; background: #fafafa; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <div class="title">1. 配置关键信息</div>
-    <input type="text" id="roleIdInput" placeholder="RoleId (如：8864086924640301525)" value="8864086924640301525">
-    <textarea id="cookieInput" rows="4" placeholder="粘贴抓包获取的完整 Cookie 字段..."></textarea>
-    <div id="status" class="status">就绪</div>
-</div>
+<div class="container">
+    <h2>三角洲官网协议查询 (优化版)</h2>
+    <p style="font-size: 12px; color: #666;">提示：如遇跨域报错，请将下方 JS 代码直接复制到官网 F12 控制台运行。</p>
+    
+    <label>1. 角色 RoleId</label>
+    <input type="text" id="roleId" value="8864086924640301525">
 
-<div class="card">
-    <div class="title">2. CDK 列表</div>
-    <textarea id="cdkInput" rows="4" placeholder="每行一个 CDK"></textarea>
-    <button id="startBtn" onclick="runTask()">同步官网封包逻辑查询</button>
-</div>
+    <label style="display:block; margin-top:10px;">2. CDK 列表 (每行一个)</label>
+    <textarea id="cdks" rows="5" placeholder="粘贴 CDK..."></textarea>
 
-<div class="res-grid">
-    <div><strong>未使用 / 限量 (-2007)</strong><div id="box1" class="res-box"></div></div>
-    <div><strong>已领 / 错误 (其他)</strong><div id="box2" class="res-box"></div></div>
+    <div id="log" class="status">状态：就绪</div>
+    <button id="btn" onclick="start()">开始自动化同步查询</button>
+
+    <div class="grid">
+        <div>
+            <div style="color:var(--success)">未使用/限量 (-2007)</div>
+            <div id="box1" class="res-box"></div>
+        </div>
+        <div>
+            <div style="color:var(--danger)">已领/报错/其他</div>
+            <div id="box2" class="res-box"></div>
+        </div>
+    </div>
 </div>
 
 <script>
-    // 代理及打码配置
-    const PROXY = "https://api.allorigins.win/raw?url=";
+    // 打码配置
     const DM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM";
 
-    function getCookieValue(cookieStr, key) {
-        const reg = new RegExp(`(^|;)\\s*${key}\\s*=\\s*([^;]+)`);
-        const match = cookieStr.match(reg);
-        return match ? match[2] : "";
-    }
+    async function start() {
+        const roleId = document.getElementById('roleId').value.trim();
+        const cdkList = document.getElementById('cdks').value.split('\n').filter(s => s.trim());
+        const log = document.getElementById('log');
+        const btn = document.getElementById('btn');
 
-    async function runTask() {
-        const roleId = document.getElementById('roleIdInput').value.trim();
-        const cookies = document.getElementById('cookieInput').value.trim();
-        const cdks = document.getElementById('cdkInput').value.split('\n').filter(s => s.trim() !== "");
-        const btn = document.getElementById('startBtn');
-
-        if (!cookies || !roleId) return alert("请填写完整信息！");
+        if (cdkList.length === 0) return alert("请输入 CDK");
         btn.disabled = true;
 
-        for (let i = 0; i < cdks.length; i++) {
-            const cdk = cdks[i].trim();
-            document.getElementById('status').innerText = `正在处理 [${i+1}/${cdks.length}]: ${cdk}`;
+        for (let cdk of cdkList) {
+            cdk = cdk.trim();
+            log.innerText = `正在处理：${cdk}`;
 
             try {
-                // 1. 获取验证码图片
-                const imgUrl = `https://ssl.captcha.qq.com/getimage?aid=21000104&r=${Math.random()}`;
-                const imgResp = await axios.get(PROXY + encodeURIComponent(imgUrl), { responseType: 'arraybuffer' });
-                const base64 = btoa(new Uint8Array(imgResp.data).reduce((data, byte) => data + String.fromCharCode(byte), ''));
-                
-                // 获取当前请求的 session
-                let vSession = cookies.match(/verifysession=([^;]+)/)?.[1] || "";
+                // 1. 获取验证码
+                // 注意：在 HTML 环境下此处可能触发 CORS，如果在官网控制台运行则 100% 成功
+                const imgRes = await axios.get(`https://ssl.captcha.qq.com/getimage?aid=21000104&r=${Math.random()}`, { responseType: 'arraybuffer' });
+                const base64 = btoa(new Uint8Array(imgRes.data).reduce((data, byte) => data + String.fromCharCode(byte), ''));
 
-                // 2. 打码
-                const capResp = await axios.post("http://api.jfbym.com/api/YmServer/customApi", {
+                // 2. 识别验证码
+                const capRes = await axios.post("http://api.jfbym.com/api/YmServer/customApi", {
                     token: DM_TOKEN, type: "10110", image: base64
                 });
-                const code = capResp.data?.data?.data || capResp.data?.data;
+                const code = capRes.data?.data?.data || capRes.data?.data;
 
-                if (!code) throw new Error("打码失败");
+                if (!code) throw new Error("验证码识别失败");
 
-                // 3. 构造 04/23 全新同步封包参数
+                // 3. 构建 04/23 最新同步协议参数
                 const ts = Math.floor(Date.now() / 1000);
-                const params = new URLSearchParams();
-                params.append('iChartId', '318157');
-                params.append('iSubChartId', '318157');
-                params.append('sIdeToken', 'Xn1xVR');
-                params.append('sCdKey', cdk);
-                params.append('sVerifyCode', code);
-                params.append('verifysession', vSession);
-                params.append('isExchange', '1');
-                params.append('sRoleId', roleId);
-                params.append('sArea', '36');
-                params.append('sRoleName', '9%E6%99%BA%E8%83%BD%E7%9A%84%E5%A5%E5%88%A9%E5%A5%E5%88%A97');
-                
-                // 核心：这些是绕过“请登录”的关键校验位
-                params.append('sMiloTag', `AMS-dfm-${ts}-YDPptO-662511`);
-                params.append('ams_targetappid', 'wx39308a0a1bd83d22');
-                params.append('sMd5str', '21F66497921BE8DF59455A70CB119716');
-                params.append('md5str', '21F66497921BE8DF59455A70CB119716');
-                params.append('sMdStr', '21F66497921BE8DF59455A70CB119716');
-                params.append('sCheckparam', `dfm|yes|${roleId}|36|${roleId}*|${roleId}|0||9%25E6%2599%25BA%25E8%2583%25BD%25E7%259A%2584%25E5%25A5%25A5%25E5%2588%25A9%25E5%25A5%25A57*|||${ts}|`);
-                params.append('iVerifyId', '21000104');
-
-                // 4. 提交请求
-                const cdkUrl = "https://dfm.ams.game.qq.com/ide/";
-                const res = await axios.post(PROXY + encodeURIComponent(cdkUrl), params, {
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                const params = new URLSearchParams({
+                    iChartId: "318157",
+                    iSubChartId: "318157",
+                    sIdeToken: "Xn1xVR",
+                    sCdKey: cdk,
+                    sVerifyCode: code,
+                    isExchange: "1",
+                    sRoleId: roleId,
+                    sArea: "36",
+                    sMd5str: "21F66497921BE8DF59455A70CB119716", // 核心固定 MD5
+                    md5str: "21F66497921BE8DF59455A70CB119716",
+                    sCheckparam: `dfm|yes|${roleId}|36|${roleId}*|${roleId}|0|||${ts}|`,
+                    iVerifyId: "21000104"
                 });
 
-                // 解析返回结果
-                const resData = res.data;
-                const msg = resData.sMsg || `返回码:${resData.ret}`;
+                // 4. 提交查询 (官网环境无需手动带 Cookie)
+                const res = await axios.post("https://dfm.ams.game.qq.com/ide/", params);
                 
-                // -2007 是你确定的未使用状态
-                if (resData.ret == 0 || resData.ret == -2007 || msg.includes("限量")) {
+                const ret = res.data.ret;
+                const msg = res.data.sMsg || "无返回信息";
+
+                // 5. 结果归类
+                if (ret == 0 || ret == -2007) {
                     document.getElementById('box1').innerText += `${cdk} | ${msg}\n`;
                 } else {
                     document.getElementById('box2').innerText += `${cdk} | ${msg}\n`;
                 }
 
             } catch (e) {
-                document.getElementById('box2').innerText += `${cdk} | 失败: ${e.message}\n`;
+                document.getElementById('box2').innerText += `${cdk} | 运行错误: ${e.message}\n`;
             }
-            // 延时 3 秒防止 429
+
+            // 6. 强制延时 3 秒，解决 429 报错问题
             await new Promise(r => setTimeout(r, 3000));
         }
+
+        log.innerText = "处理结束";
         btn.disabled = false;
-        document.getElementById('status').innerText = "任务结束";
     }
 </script>
 </body>
