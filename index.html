@@ -2,32 +2,27 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>三角洲 CDK 查询 - 生产环境修正版</title>
+    <title>三角洲 CDK 查询 - 最终兼容版</title>
     <style>
-        body { font-family: -apple-system, "Helvetica Neue", sans-serif; background: #f8f9fa; padding: 20px; }
-        .card { background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        .title { font-weight: 700; font-size: 1.1rem; color: #1a1a1a; margin-bottom: 15px; display: flex; align-items: center; }
-        .title::before { content: ""; width: 4px; height: 18px; background: #007bff; margin-right: 10px; border-radius: 2px; }
-        textarea { width: 100%; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; font-family: "Cascadia Code", monospace; font-size: 13px; resize: vertical; transition: 0.3s; }
-        textarea:focus { border-color: #007bff; outline: none; box-shadow: 0 0 0 3px rgba(0,123,255,0.1); }
-        button { width: 100%; padding: 16px; background: #007bff; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: 0.2s; margin-top: 10px; }
-        button:hover { background: #0069d9; transform: translateY(-1px); }
-        button:disabled { background: #e0e0e0; cursor: not-allowed; transform: none; }
-        #status { font-weight: 600; color: #007bff; margin: 10px 0; font-size: 14px; }
-        .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .res-box { background: #fff; padding: 15px; border-radius: 10px; border: 1px solid #eee; height: 350px; overflow-y: auto; font-size: 12px; line-height: 1.6; }
+        body { font-family: sans-serif; background: #f4f7f9; padding: 20px; }
+        .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; }
+        button { width: 100%; padding: 15px; background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .res-box { background: #fff; padding: 12px; border: 1px solid #eee; min-height: 350px; white-space: pre-wrap; font-size: 12px; overflow-y: auto; }
+        #status { color: #007bff; font-weight: bold; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <div class="title">1. 粘贴抓取的完整数据 (包含 Authkey/Cookies)</div>
-    <textarea id="cookieInput" rows="3" placeholder="粘贴官网抓到的任意请求包含的所有 Cookie 信息"></textarea>
-    <div id="status">当前状态：就绪，等待导入数据</div>
+    <strong>1. 粘贴抓取的完整数据 (包含 Authkey/Cookies)</strong>
+    <textarea id="cookieInput" rows="3"></textarea>
+    <div id="status">状态：就绪</div>
 </div>
 
 <div class="card">
-    <div class="title">2. CDK 列表 (每行一个)</div>
+    <strong>2. CDK 列表</strong>
     <textarea id="cdkInput" rows="5"></textarea>
     <button id="startBtn" onclick="run()">开始同步查询</button>
 </div>
@@ -38,56 +33,34 @@
 </div>
 
 <script>
-    // 强制使用中转代理解决 Failed to fetch 跨域问题
-    const PROXY = "https://cors-anywhere.herokuapp.com/";
+    // 换一个更宽松的公共代理，避免 "The origin is not allowed"
+    const PROXY = "https://api.allorigins.win/raw?url=";
     const DM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM";
-
-    function getMid(str, left, right) {
-        let l = str.indexOf(left); if (l === -1) return "";
-        l += left.length;
-        let r = str.indexOf(right, l); return r === -1 ? str.substring(l) : str.substring(l, r);
-    }
-
-    // 核心：封装最底层的 XHR，模拟易语言的“网页_访问_对象”
-    function xhrPost(url, body, headers) {
-        return new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open("POST", PROXY + url, true);
-            Object.keys(headers).forEach(key => xhr.setRequestHeader(key, headers[key]));
-            xhr.onload = () => {
-                try { resolve(JSON.parse(xhr.responseText)); } 
-                catch (e) { resolve({ sMsg: "返回格式错误" }); }
-            };
-            xhr.onerror = () => reject("网络连接失败 (检查代理授权)");
-            xhr.send(body);
-        });
-    }
 
     async function run() {
         const raw = document.getElementById('cookieInput').value.trim();
         const cdks = document.getElementById('cdkInput').value.split('\n').filter(s => s.trim() !== "");
         const btn = document.getElementById('startBtn');
-        
-        if (!raw) return alert("请先输入 Cookie 数据！");
         btn.disabled = true;
 
-        for (let i = 0; i < cdks.length; i++) {
-            const cdk = cdks[i].trim();
-            document.getElementById('status').innerText = `正在处理第 ${i+1}/${cdks.length}: ${cdk}`;
-
+        for (let cdk of cdks) {
+            cdk = cdk.trim();
+            document.getElementById('status').innerText = `正在处理: ${cdk}`;
             try {
-                // 1. 获取图片并提取 Session
-                const imgRes = await fetch(PROXY + "https://ssl.captcha.qq.com/getimage?aid=21000104&r=" + Math.random(), {
-                    headers: { 'Cookie': raw }
-                });
-                const vSession = (imgRes.headers.get('set-cookie') || "").match(/verifysession=([^;]+)/)?.[1] || "";
+                // 1. 获取图片并提取 verifysession
+                const imgUrl = encodeURIComponent("https://ssl.captcha.qq.com/getimage?aid=21000104&r=" + Math.random());
+                const imgRes = await fetch(PROXY + imgUrl, { headers: { 'x-requested-with': 'XMLHttpRequest' } });
                 const imgBlob = await imgRes.blob();
+                
+                // 注意：由于代理限制，Header 里的 verifysession 可能取不到，
+                // 我们直接尝试从 raw 中提取或让后端自动处理
+                const vSession = raw.match(/verifysession=([^;]+)/)?.[1] || "";
 
-                // 2. 打码识别
+                // 2. 打码
                 const base64 = await new Promise(r => {
                     const fr = new FileReader(); fr.onloadend = () => r(fr.result.split(',')[1]); fr.readAsDataURL(imgBlob);
                 });
-                const capRes = await fetch(PROXY + "http://api.jfbym.com/api/YmServer/customApi", {
+                const capRes = await fetch("http://api.jfbym.com/api/YmServer/customApi", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ token: DM_TOKEN, type: "10110", image: base64 })
@@ -95,33 +68,40 @@
                 const capJson = await capRes.json();
                 const code = capJson?.data?.data || capJson?.data;
 
-                // 3. 构建 Body (完全按照易语言源码里的死参数对齐)
+                // 3. 构建 Body (同步易语言参数)
                 const roleId = "8864086924640301525";
                 const body = `iChartId=318157&iSubChartId=318157&sIdeToken=Xn1xVR&e_code=0&g_code=0&sCdKey=${cdk}&sVerifyCode=${code}&verifysession=${vSession}&sCdkey=${cdk}&isExchange=1&sRoleId=${roleId}&sArea=36&sRoleName=9%2525E6%252599%2525BA%2525E8%252583%2525BD%2525E7%25259A%252584%2525E5%2525A5%2525A5%2525E5%252588%2525A9%2525E5%2525A5%2525A57&sMd5str=591D6AA1ECFF09A20E9DD952E44F9A63&md5str=591D6AA1ECFF09A20E9DD952E44F9A63&sCheckparam=dfm%7Cyes%7C${roleId}%7C36%7C${roleId}%2A%7C${roleId}%7C0%7C%7C9%25E6%2599%25BA%25E8%2583%25BD%25E7%259A%2584%25E5%25A5%25A5%25E5%2588%25A9%25E5%25A5%25A57%2A%7C%7C%7C1775625450%7C`;
 
-                // 4. 发送请求 (使用 XHR 绕过 Axios 默认编码限制)
-                const res = await xhrPost("https://dfm.ams.game.qq.com/ide/", body, {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Cookie": raw + "; verifysession=" + vSession,
-                    "Referer": "https://df.qq.com/cp/a20240812cdk/index.html"
+                // 4. 发送最终请求
+                const targetUrl = encodeURIComponent("https://dfm.ams.game.qq.com/ide/");
+                const res = await fetch(PROXY + targetUrl, {
+                    method: 'POST',
+                    body: body,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
                 });
 
-                const ret = res.ret;
-                const msg = res.sMsg || "查询完成";
+                const text = await res.text();
+                let json;
+                try {
+                    json = JSON.parse(text);
+                } catch(e) {
+                    // 如果代理返回的是包装后的结果，尝试二次解析
+                    json = JSON.parse(JSON.parse(text).contents);
+                }
 
-                // 分类判定 (与易语言同步：0 或 -2007 视为未使用)
+                const ret = json.ret;
+                const msg = json.sMsg || "查询完成";
+
                 const isUnused = (ret == 0 || ret == -2007 || msg.includes("限量"));
                 document.getElementById(isUnused ? 'box1' : 'box2').innerText += `${cdk} | ${msg}\n`;
 
             } catch (e) {
-                document.getElementById('box2').innerText += `${cdk} | 报错: ${e}\n`;
+                document.getElementById('box2').innerText += `${cdk} | 错误: ${e.message}\n`;
             }
-            
-            // 延时 2.5 秒，模拟正常用户节奏
-            await new Promise(r => setTimeout(r, 2500));
+            await new Promise(r => setTimeout(r, 2000));
         }
         btn.disabled = false;
-        document.getElementById('status').innerText = "状态：所有查询已结束";
+        document.getElementById('status').innerText = "全部完成";
     }
 </script>
 </body>
