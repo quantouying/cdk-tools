@@ -2,38 +2,37 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>三角洲 CDK 自动化查询 - 原生封包克隆版</title>
+    <title>三角洲 CDK 自动化查询 - 原生克隆版</title>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
-        :root { --primary: #007bff; --bg: #f8f9fa; }
-        body { font-family: -apple-system, sans-serif; background: var(--bg); padding: 15px; margin: 0; }
-        .card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); margin-bottom: 15px; }
-        .title { font-weight: bold; margin-bottom: 10px; border-left: 4px solid var(--primary); padding-left: 10px; }
-        textarea { width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-size: 13px; background: #fafafa; font-family: monospace; }
-        button { width: 100%; padding: 16px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        :root { --primary: #007bff; --success: #28a745; --danger: #dc3545; }
+        body { font-family: system-ui; background: #f0f2f5; padding: 20px; }
+        .card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        textarea { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-family: monospace; font-size: 13px; }
+        button { width: 100%; padding: 16px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
         button:disabled { background: #ccc; }
-        .log { font-size: 13px; color: var(--primary); margin: 10px 0; font-weight: bold; }
-        .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .res-box { padding: 12px; border-radius: 8px; font-size: 12px; min-height: 300px; border: 1px solid #eee; white-space: pre-wrap; background: #fff; overflow-y: auto; max-height: 500px; }
+        .log { color: var(--primary); margin: 10px 0; font-weight: bold; }
+        .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .res-box { background: #fff; padding: 15px; border-radius: 8px; min-height: 250px; white-space: pre-wrap; font-size: 12px; border: 1px solid #eee; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <div class="title">1. 粘贴官网抓取的完整 Cookie</div>
+    <strong>1. 粘贴官网抓取的完整 Cookie (包含 access_token)</strong>
     <textarea id="cookieInput" rows="3" placeholder="eas_sid=...; access_token=..."></textarea>
-    <div id="statusLog" class="log">等待操作...</div>
+    <div id="statusLog" class="log">状态：等待开始</div>
 </div>
 
 <div class="card">
-    <div class="title">2. CDK 列表</div>
-    <textarea id="cdkInput" rows="5" placeholder="每行一个 CDK"></textarea>
-    <button id="startBtn" onclick="run()">同步官网原生逻辑开始查询</button>
+    <strong>2. CDK 列表</strong>
+    <textarea id="cdkInput" rows="5" placeholder="每行一个"></textarea>
+    <button id="startBtn" onclick="run()">同步官网原生封包逻辑查询</button>
 </div>
 
 <div class="res-grid">
     <div><strong>未使用/可用 (-2007/0)</strong><div id="box1" class="res-box"></div></div>
-    <div><strong>其他结果 (已用/错误)</strong><div id="box2" class="res-box"></div></div>
+    <div><strong>其他结果</strong><div id="box2" class="res-box"></div></div>
 </div>
 
 <script>
@@ -46,7 +45,7 @@
         const cdks = document.getElementById('cdkInput').value.split('\n').filter(s => s.trim() !== "");
         const btn = document.getElementById('startBtn');
         
-        if (!rawCookies) return alert("请粘贴 Cookie！");
+        if (!rawCookies) return alert("请先粘贴 Cookie！");
         btn.disabled = true;
 
         for (let cdk of cdks) {
@@ -58,21 +57,22 @@
                     responseType: 'arraybuffer', headers: { 'Cookie': rawCookies } 
                 });
                 
-                // 提取最新的 verifysession
+                // 实时抓取最新的 verifysession，确保护航 Body 里的校验
                 const setCookie = imgRes.headers['set-cookie'] || [];
-                const vSessionPair = setCookie.find(s => s.includes('verifysession')) || "";
-                const vSessionVal = vSessionPair.split(';')[0].split('=')[1] || "";
+                const vPair = setCookie.find(s => s.includes('verifysession')) || "";
+                const vSessionVal = vPair.split(';')[0].split('=')[1] || "";
 
-                // 2. 识别验证码
+                // 2. 打码平台识别
                 const base64Img = btoa(new Uint8Array(imgRes.data).reduce((d, b) => d + String.fromCharCode(b), ''));
-                const capRes = await axios.post(PROXY + "http://api.jfbym.com/api/YmServer/customApi", { token: DM_TOKEN, type: "10110", image: base64Img });
+                const capRes = await axios.post(PROXY + "http://api.jfbym.com/api/YmServer/customApi", { 
+                    token: DM_TOKEN, type: "10110", image: base64Img 
+                });
                 const code = capRes.data?.data?.data || capRes.data?.data;
 
-                if (!code || !vSessionVal) throw new Error("打码或Session获取失败");
+                if (!code || !vSessionVal) throw new Error("打码或获取Session失败");
 
-                // 3. 构建【完全同步官网】的 Body 字符串
+                // 3. 构建【原生克隆版】Body
                 const roleId = "8864086924640301525";
-                // 这里的参数顺序和转义方式完全参考你提供的原生 POST 数据
                 const body = [
                     `iChartId=318157`,
                     `iSubChartId=318157`,
@@ -115,19 +115,20 @@
 
                 const ret = res.data.ret;
                 const msg = res.data.sMsg || "未知错误";
-                // 修正判定：-2007 (同类已领) 在你的业务中视为未使用
+                // 核心业务判定逻辑
                 const isUnused = (ret == 0 || ret == -2007);
                 
-                const box = document.getElementById(isUnused ? 'box1' : 'box2');
-                box.innerText += `${cdk} | ${msg}\n`;
+                document.getElementById(isUnused ? 'box1' : 'box2').innerText += `${cdk} | ${msg}\n`;
 
             } catch (e) {
-                document.getElementById('box2').innerText += `${cdk} | 报错: ${e.message}\n`;
+                // 处理 429 或其他异常
+                document.getElementById('box2').innerText += `${cdk} | 异常: ${e.message}\n`;
             }
-            await new Promise(r => setTimeout(r, 3000));
+            // 增加随机延迟防封
+            await new Promise(r => setTimeout(r, 4000 + Math.random() * 2000));
         }
         btn.disabled = false;
-        document.getElementById('statusLog').innerText = `状态：完成`;
+        document.getElementById('statusLog').innerText = `状态：任务完成`;
     }
 </script>
 </body>
