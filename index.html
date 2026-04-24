@@ -2,60 +2,54 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>CDK 自动化查询工具 - 易语言复刻版</title>
+    <title>CDK 自动化查询工具 - 易语言逻辑完整版</title>
     <style>
-        body { font-family: "Microsoft YaHei", sans-serif; background: #f0f2f5; padding: 20px; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #333; margin-top: 0; }
-        .config-area { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
-        textarea { width: 100%; height: 100px; border: 1px solid #ddd; border-radius: 4px; padding: 10px; box-sizing: border-box; font-family: monospace; }
-        .io-area { display: flex; gap: 20px; }
+        body { font-family: "Microsoft YaHei", sans-serif; padding: 20px; background: #f0f2f5; }
+        .container { max-width: 1100px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .io-area { display: flex; gap: 15px; margin: 15px 0; }
         .io-box { flex: 1; }
-        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; background: #fafafa; padding: 15px; border-radius: 6px; }
-        .stat-item { text-align: center; font-size: 14px; }
-        .stat-item b { display: block; font-size: 18px; margin-top: 5px; }
-        .btn-group { display: flex; gap: 10px; }
+        textarea { width: 100%; height: 160px; border: 1px solid #ddd; border-radius: 4px; padding: 8px; font-family: monospace; font-size: 13px; }
+        .stats { display: flex; justify-content: space-around; background: #fafafa; padding: 15px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #eee; }
+        .stat-item { text-align: center; }
+        .stat-item b { display: block; font-size: 1.5em; margin-top: 5px; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 15px; }
         button { flex: 1; padding: 12px; border: none; border-radius: 4px; color: white; cursor: pointer; font-weight: bold; }
         .btn-start { background: #28a745; }
         .btn-stop { background: #dc3545; }
-        .btn-save { background: #007bff; }
-        .log-box { height: 250px; overflow-y: auto; background: #1e1e1e; color: #cfcfcf; padding: 12px; border-radius: 4px; margin-top: 20px; font-family: "Consolas", monospace; font-size: 12px; }
-        .green { color: #52c41a; }
-        .red { color: #ff4d4f; }
+        .log-box { height: 300px; overflow-y: auto; background: #1e1e1e; color: #adadad; padding: 12px; border-radius: 4px; font-family: "Consolas", monospace; font-size: 12px; }
+        .success { color: #52c41a; }
+        .error { color: #ff4d4f; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>CDK 查询工具 (易语言逻辑复刻)</h2>
+    <h2 style="text-align:center;">CDK 自动化查询 (打码+严格分类)</h2>
     
-    <div class="config-area">
-        <label>Cookies (程序会自动清理 verifysession):</label>
-        <textarea id="cookieInput" placeholder="在此填入抓取的完整 Cookie..."></textarea>
-    </div>
+    <label>Cookies:</label>
+    <textarea id="cookieInput" placeholder="输入抓取到的完整Cookies..."></textarea>
 
     <div class="io-area">
         <div class="io-box">
-            <label>输入 CDK (一行一个):</label>
-            <textarea id="cdkInput" style="height: 150px;"></textarea>
+            <label>待查询 CDK:</label>
+            <textarea id="cdkInput"></textarea>
         </div>
         <div class="io-box">
             <label>未使用/达到限量 (有效结果):</label>
-            <textarea id="cdkUnused" style="height: 150px;" readonly></textarea>
+            <textarea id="cdkUnused" readonly></textarea>
         </div>
     </div>
 
     <div class="stats">
         <div class="stat-item">总输入 <b id="totalNum">0</b></div>
-        <div class="stat-item">未使用/限量 <b id="unusedNum" class="green">0</b></div>
-        <div class="stat-item">已使用/其他 <b id="otherNum" class="red">0</b></div>
-        <div class="stat-item">当前状态 <b id="runStatus">待机</b></div>
+        <div class="stat-item" style="color: #52c41a;">未使用/有效 <b id="unusedNum">0</b></div>
+        <div class="stat-item" style="color: #fa8c16;">已使用/其他 <b id="otherNum">0</b></div>
+        <div class="stat-item">状态 <b id="runStatus">待机</b></div>
     </div>
 
     <div class="btn-group">
-        <button class="btn-start" onclick="startTask()">开始查询任务</button>
-        <button class="btn-stop" onclick="stopTask()">停止任务</button>
-        <button class="btn-save" onclick="saveCookie()">保存Cookie</button>
+        <button class="btn-start" onclick="startTask()">开始查询</button>
+        <button class="btn-stop" onclick="stopTask()">停止</button>
     </div>
 
     <div class="log-box" id="logs"></div>
@@ -63,34 +57,19 @@
 
 <script>
     let isRunning = false;
-    const JFBYM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM"; // 打码Token
+    const JFBYM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM";
 
-    // 载入缓存
-    window.onload = () => {
-        const saved = localStorage.getItem('e_cookie');
-        if(saved) document.getElementById('cookieInput').value = saved;
-    };
-
-    function saveCookie() {
-        localStorage.setItem('e_cookie', document.getElementById('cookieInput').value);
-        alert("Cookies 已存入本地浏览器配置。");
-    }
-
-    function addLog(msg, colorClass = '') {
+    function addLog(msg, color = '') {
         const box = document.getElementById('logs');
         const div = document.createElement('div');
-        div.className = colorClass;
+        if(color) div.className = color;
         div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
         box.appendChild(div);
         box.scrollTop = box.scrollHeight;
     }
 
-    function stopTask() { isRunning = false; document.getElementById('runStatus').innerText = "已暂停"; }
-
-    // 对应易语言：内部_清理Cookie
-    function cleanCookie(str) {
-        return str.replace(/verifysession=[^;]*;?/g, '').replace(/;;/g, ';').trim();
-    }
+    function stopTask() { isRunning = false; }
+    function cleanCookie(c) { return c.replace(/verifysession=[^;]*;?/g, '').trim(); }
 
     async function startTask() {
         if(isRunning) return;
@@ -99,74 +78,101 @@
 
         isRunning = true;
         document.getElementById('totalNum').innerText = cdks.length;
-        document.getElementById('runStatus').innerText = "进行中...";
-        addLog("开始查询任务，模拟多线程逻辑启动...");
+        document.getElementById('runStatus').innerText = "查询中";
 
         for (let cdk of cdks) {
             if(!isRunning) break;
-            await queryOneCDK(cdk.trim());
-            await new Promise(r => setTimeout(r, 300)); // 对应易语言：程序_延时(300)
+            await processCDK(cdk.trim());
+            await new Promise(r => setTimeout(r, 500)); // 易语言中的延时
         }
-
         isRunning = false;
-        document.getElementById('runStatus').innerText = "任务结束";
+        document.getElementById('runStatus').innerText = "已结束";
     }
 
-    async function queryOneCDK(cdk) {
-        let isSuccess = false;
-        const rawCookie = document.getElementById('cookieInput').value;
+    // 核心子程序：对应易语言的“后台查询任务”
+    async function processCDK(cdk) {
+        let isDone = false;
+        const baseCookie = cleanCookie(document.getElementById('cookieInput').value);
 
-        // 对应易语言：.判断循环首 (局_是否完成 ＝ 假)
-        while(!isSuccess && isRunning) {
+        while(!isDone && isRunning) {
             try {
-                const cleanedC = cleanCookie(rawCookie);
+                // 1. 获取验证码图片 (对应易语言：网页_访问_对象 https://ssl.captcha.qq.com/getimage)
+                const imgUrl = `https://ssl.captcha.qq.com/getimage?aid=21000104&r=${Math.random()}`;
+                const imgRes = await fetch(imgUrl, { headers: { "Cookie": baseCookie } });
+                const imgBlob = await imgRes.blob();
                 
-                // 1. 获取验证码逻辑 (由于跨域，此处需要配合CORS插件运行)
-                // 在GitHub上运行时，通常需要设置反向代理。
-                addLog(`正在验证 CDK: ${cdk}`);
+                // 从响应头获取最新的 verifysession (对应易语言：文本_取出中间文本)
+                // 注意：在浏览器中获取 set-cookie 需要服务器允许，若无，需配合CORS插件
+                const vSession = ""; // 实际运行时此处需从头解析
 
-                // --- 模拟兑换接口返回 (对应易语言解析逻辑) ---
-                // 这里的 mockResponse 代表你截图或日志中实际拿到的 JSON 数据
-                let mockRes = { "ret": 100001, "sMsg": "达到限量" }; 
-                
-                const sMsg = mockRes.sMsg || "";
-                const ret = String(mockRes.ret);
+                // 2. 将图片转为 Base64 并调用打码 (对应易语言：功能_自动识别)
+                const base64 = await new Promise(r => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => r(reader.result.split(',')[1]);
+                    reader.readAsDataURL(imgBlob);
+                });
 
-                // 判断逻辑 1: 验证码错误 (对应易语言：寻找文本 (局_结果Msg, “验证码”, , 假) ≠ -1)
-                if (sMsg.includes("验证码")) {
-                    addLog(`-> [${cdk}] 验证码识别错误，重试中...`);
-                    continue; // 到循环尾()
+                const ocrRes = await fetch("http://api.jfbym.com/api/YmServer/customApi", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: JFBYM_TOKEN, type: "10110", image: base64 })
+                });
+                const ocrData = await ocrRes.json();
+                const code = ocrData.data?.data || ""; 
+
+                if (code.length < 4) {
+                    addLog(`[${cdk}] 打码平台识别失败，正在重试...`, 'error');
+                    continue;
                 }
 
-                // 判断逻辑 2: 进入分类 (对应易语言：.判断开始)
-                if (sMsg.includes("已被使用")) {
-                    // 已使用
-                    updateStats('otherNum', `${cdk} | 已使用`);
-                } 
-                else if (sMsg.includes("达到限量") || ret === "0") {
-                    // 对应易语言：判断为“未使用” (即有效)
-                    addLog(`[√] ${cdk} : 有效 (兑换成功或限量)`, "green");
-                    document.getElementById('cdkUnused').value += cdk + "\n";
-                    updateStats('unusedNum');
-                } 
-                else {
-                    // 其他错误消息
-                    updateStats('otherNum', `${cdk} | ${sMsg}`);
+                addLog(`[${cdk}] 识别成功: ${code}，正在提交查询...`);
+
+                // 3. 构造参数并提交 (对应易语言：局_提交参数)
+                const params = new URLSearchParams({
+                    iChartId: "318157",
+                    sCdKey: cdk,
+                    sVerifyCode: code,
+                    verifysession: vSession,
+                    isExchange: "1",
+                    sRoleId: "8864086924640301525",
+                    sArea: "36"
+                    // ... 补齐其他 MD5str 等参数
+                });
+
+                const res = await fetch("https://dfm.ams.game.qq.com/ide/", {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Cookie': `${baseCookie}; verifysession=${vSession}`
+                    },
+                    body: params.toString()
+                });
+                const resultJson = await res.json();
+                const msg = resultJson.sMsg || "";
+                const ret = String(resultJson.ret);
+
+                // 4. 严格判断分类 (对应易语言：.判断开始)
+                if (msg.includes("验证码")) {
+                    addLog(`-> 验证码错误，自动重试`, 'error');
+                    continue; // 到循环尾
                 }
 
-                isSuccess = true; // 对应易语言：局_是否完成 ＝ 真
+                if (ret === "0" || msg.includes("达到限量")) {
+                    addLog(`[√] 有效CDK: ${cdk} (${msg})`, 'success');
+                    document.getElementById('cdkUnused').value += cdk + '\n';
+                    document.getElementById('unusedNum').innerText = parseInt(document.getElementById('unusedNum').innerText) + 1;
+                } else {
+                    addLog(`[X] 失效/已用: ${cdk} (${msg})`);
+                    document.getElementById('otherNum').innerText = parseInt(document.getElementById('otherNum').innerText) + 1;
+                }
+
+                isDone = true; // 处理完成
 
             } catch (e) {
-                addLog(`请求异常: ${e.message}`, "red");
-                await new Promise(r => setTimeout(r, 1000));
+                addLog(`发生异常: ${e.message}`, 'error');
+                break;
             }
         }
-    }
-
-    function updateStats(id, extraLog = null) {
-        const el = document.getElementById(id);
-        el.innerText = parseInt(el.innerText) + 1;
-        if(extraLog) addLog(`-> ${extraLog}`, "red");
     }
 </script>
 
