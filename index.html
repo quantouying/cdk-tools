@@ -2,49 +2,50 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>CDK 自动化查询 (打码+严格分类)</title>
+    <title>CDK 自动化查询 (严格复刻版)</title>
     <style>
-        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; }
+        body { font-family: "Microsoft YaHei", sans-serif; background: #f5f5f5; padding: 20px; }
         .app { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        textarea { width: 100%; border: 1px solid #ddd; padding: 10px; font-family: monospace; border-radius: 4px; box-sizing: border-box; }
-        .stats { display: flex; justify-content: space-between; background: #fafafa; padding: 15px; margin: 15px 0; border-radius: 6px; }
-        .stat-box { text-align: center; flex: 1; }
-        .stat-box b { display: block; font-size: 20px; margin-top: 5px; }
-        .btn-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        textarea { width: 100%; border: 1px solid #ccc; border-radius: 4px; padding: 8px; font-family: monospace; box-sizing: border-box; }
+        .flex-row { display: flex; gap: 20px; margin: 15px 0; }
+        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; background: #fafafa; padding: 15px; border-radius: 6px; border: 1px solid #eee; margin-bottom: 15px; }
+        .stat-item { text-align: center; }
+        .stat-item b { display: block; font-size: 1.4em; margin-top: 5px; }
+        .btn-group { display: flex; gap: 10px; }
         button { flex: 1; padding: 12px; border: none; border-radius: 4px; color: white; cursor: pointer; font-weight: bold; }
         .start { background: #28a745; }
         .stop { background: #dc3545; }
-        .log { background: #1e1e1e; color: #adadad; height: 250px; overflow-y: auto; padding: 10px; font-size: 12px; border-radius: 4px; }
-        .ok { color: #52c41a; }
-        .fail { color: #ff4d4f; }
+        .log { background: #1e1e1e; color: #adadad; height: 300px; overflow-y: auto; padding: 10px; font-size: 12px; border-radius: 4px; line-height: 1.5; margin-top: 15px; }
+        .green { color: #52c41a; }
+        .red { color: #ff4d4f; }
     </style>
 </head>
 <body>
 
 <div class="app">
-    <label>Cookies:</label>
-    <textarea id="cookie" style="height: 100px;"></textarea>
+    <label>Cookies (抓包获取的完整值):</label>
+    <textarea id="cookieBox" style="height: 100px;"></textarea>
 
-    <div style="display: flex; gap: 15px; margin-top: 15px;">
+    <div class="flex-row">
         <div style="flex:1">
             <label>待查询 CDK:</label>
-            <textarea id="input" style="height: 150px;"></textarea>
+            <textarea id="inputCDK" style="height: 150px;"></textarea>
         </div>
         <div style="flex:1">
             <label>未使用/达到限量 (有效结果):</label>
-            <textarea id="output" style="height: 150px;" readonly></textarea>
+            <textarea id="outputCDK" style="height: 150px;" readonly></textarea>
         </div>
     </div>
 
-    <div class="stats">
-        <div class="stat-box">总输入 <b id="total">0</b></div>
-        <div class="stat-box" style="color:#28a745">未使用/有效 <b id="count_ok">0</b></div>
-        <div class="stat-box" style="color:#fa8c16">已使用/其他 <b id="count_other">0</b></div>
-        <div class="stat-box">状态 <b id="status">已结束</b></div>
+    <div class="stat-grid">
+        <div class="stat-item">总输入 <b id="totalNum">0</b></div>
+        <div class="stat-item" style="color:#28a745">未使用/有效 <b id="okNum">0</b></div>
+        <div class="stat-item" style="color:#fa8c16">已使用/其他 <b id="failNum">0</b></div>
+        <div class="stat-item">状态 <b id="status">待机</b></div>
     </div>
 
     <div class="btn-group">
-        <button class="start" onclick="run()">开始查询</button>
+        <button class="start" onclick="start()">开始执行任务</button>
         <button class="stop" onclick="isRunning=false">停止</button>
     </div>
 
@@ -53,52 +54,55 @@
 
 <script>
     let isRunning = false;
-    const TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM";
+    const JFB_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM";
 
-    function log(m, c='') {
-        const d = document.createElement('div');
-        if(c) d.className = c;
-        d.innerText = `[${new Date().toLocaleTimeString()}] ${m}`;
-        const b = document.getElementById('logBox');
-        b.appendChild(d); b.scrollTop = b.scrollHeight;
+    function addLog(msg, color='') {
+        const box = document.getElementById('logBox');
+        const div = document.createElement('div');
+        if(color) div.className = color;
+        div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        box.appendChild(div); box.scrollTop = box.scrollHeight;
     }
 
-    // 清理Cookie (复刻易语言内部_清理Cookie)
-    function clean(c) { return c.replace(/verifysession=[^;]*;?/g, '').trim(); }
+    // 对应易语言：内部_清理Cookie
+    function cleanCookie(c) {
+        return c.replace(/verifysession=[^;]*;?/g, '').replace(/;;/g, ';').trim();
+    }
 
-    async function run() {
+    async function start() {
         if(isRunning) return;
-        const cdks = document.getElementById('input').value.split('\n').filter(x => x.trim());
-        if(!cdks.length) return alert("无CDK");
-        
+        const list = document.getElementById('inputCDK').value.split('\n').filter(s => s.trim());
+        if(!list.length) return alert("CDK为空");
+
         isRunning = true;
-        document.getElementById('total').innerText = cdks.length;
+        document.getElementById('totalNum').innerText = list.length;
         document.getElementById('status').innerText = "查询中";
         
-        for(let cdk of cdks) {
+        for(let cdk of list) {
             if(!isRunning) break;
-            await task(cdk.trim());
-            await new Promise(r => setTimeout(r, 350)); // 程序_延时(300)
+            await process(cdk.trim());
+            await new Promise(r => setTimeout(r, 400)); // 程序_延时(300)
         }
         isRunning = false;
         document.getElementById('status').innerText = "已结束";
     }
 
-    async function task(cdk) {
-        let done = false;
-        const baseCookie = clean(document.getElementById('cookie').value);
+    async function process(cdk) {
+        let isDone = false;
+        const baseC = cleanCookie(document.getElementById('cookieBox').value);
 
-        while(!done && isRunning) {
+        while(!isDone && isRunning) {
             try {
-                // 1. 取验证码图 (复刻易语言 getimage)
+                // 1. 获取验证码 (复刻易语言取图流程)
+                addLog(`正在获取 ${cdk} 的验证码...`);
                 const imgRes = await fetch(`https://ssl.captcha.qq.com/getimage?aid=21000104&r=${Math.random()}`, {
-                    headers: { "Cookie": baseCookie }
+                    headers: { "Cookie": baseC }
                 });
                 
-                // 提取 verifysession
-                const setCookie = imgRes.headers.get('set-cookie') || "";
-                let vSession = setCookie.match(/verifysession=([^;]+)/)?.[1] || "";
-                
+                // 从Header提取 verifysession (这一步必须开CORS插件才能读取到)
+                const allCookies = imgRes.headers.get('set-cookie') || "";
+                let vSession = allCookies.match(/verifysession=([^;]+)/)?.[1] || "";
+
                 const blob = await imgRes.blob();
                 const b64 = await new Promise(r => {
                     const reader = new FileReader();
@@ -106,57 +110,58 @@
                     reader.readAsDataURL(blob);
                 });
 
-                // 2. 自动识别 (复刻易语言 功能_自动识别)
-                const ocrRes = await fetch("http://api.jfbym.com/api/YmServer/customApi", {
+                // 2. 打码平台识别 (复刻功能_自动识别)
+                const ocr = await fetch("http://api.jfbym.com/api/YmServer/customApi", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: TOKEN, type: "10110", image: b64 })
-                });
-                const ocr = await ocrRes.json();
-                const code = ocr.data?.data || "";
+                    body: JSON.stringify({ token: JFB_TOKEN, type: "10110", image: b64 })
+                }).then(r => r.json());
 
-                if(code.length < 4) { log(`${cdk}: 打码失败重试`, 'fail'); continue; }
+                const vCode = ocr.data?.data || "";
+                if(vCode.length < 4) { addLog("打码失败，重试中...", "red"); continue; }
 
-                // 3. 提交查询 (复刻易语言 局_提交参数)
-                const body = new URLSearchParams({
-                    iChartId: "318157", iSubChartId: "318157", sIdeToken: "Xn1xVR",
-                    sCdKey: cdk, sVerifyCode: code, verifysession: vSession,
-                    sCdkey: cdk, isExchange: "1", sRoleId: "8864086924640301525",
-                    sArea: "36", sRoleName: "9%E6%99%BA%E8%83%BD%E7%9A%84%E5%A5%A5%E5%88%A9%E5%A5%A57",
-                    sMd5str: "591D6AA1ECFF09A20E9DD952E44F9A63", md5str: "591D6AA1ECFF09A20E9DD952E44F9A63"
-                });
+                // 3. 提交请求 (完全同步易语言构造参数)
+                const body = new URLSearchParams();
+                body.append("iChartId", "318157");
+                body.append("sCdKey", cdk);
+                body.append("sVerifyCode", vCode);
+                body.append("verifysession", vSession);
+                body.append("isExchange", "1");
+                body.append("sRoleId", "8864086924640301525");
+                body.append("sArea", "36");
+                body.append("sMd5str", "591D6AA1ECFF09A20E9DD952E44F9A63"); // 复刻源码中的固定MD5
+                body.append("md5str", "591D6AA1ECFF09A20E9DD952E44F9A63");
 
                 const res = await fetch("https://dfm.ams.game.qq.com/ide/", {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/x-www-form-urlencoded',
-                        'Cookie': `${baseCookie}; verifysession=${vSession}`
+                        'Cookie': `${baseC}; verifysession=${vSession}`
                     },
                     body: body.toString()
-                });
-                
-                const json = await res.json();
-                const msg = json.sMsg || "";
-                const ret = String(json.ret);
+                }).then(r => r.json());
 
-                // 4. 严格分类逻辑 (同步易语言 .判断开始)
+                const msg = res.sMsg || "";
+                const ret = String(res.ret);
+
+                // 4. 严格逻辑分类 (复刻易语言判断开始)
                 if(msg.includes("验证码")) {
-                    log(`${cdk}: 验证码错误`, 'fail');
-                    continue;
+                    addLog(`[${cdk}] 验证码错，自动重试`, "red");
+                    continue; 
                 }
 
                 if(ret === "0" || msg.includes("达到限量")) {
-                    log(`${cdk}: 有效 (${msg})`, 'ok');
-                    document.getElementById('cdkUnused').value += cdk + '\n';
-                    document.getElementById('count_ok').innerText = parseInt(document.getElementById('count_ok').innerText) + 1;
+                    addLog(`[${cdk}] 有效: ${msg}`, "green");
+                    document.getElementById('outputCDK').value += cdk + "\n";
+                    document.getElementById('okNum').innerText = parseInt(document.getElementById('okNum').innerText) + 1;
                 } else {
-                    log(`${cdk}: ${msg}`);
-                    document.getElementById('count_other').innerText = parseInt(document.getElementById('count_other').innerText) + 1;
+                    addLog(`[${cdk}] 失效: ${msg}`);
+                    document.getElementById('failNum').innerText = parseInt(document.getElementById('failNum').innerText) + 1;
                 }
-                done = true;
+                isDone = true;
 
             } catch (e) {
-                log(`网络异常: ${e.message}`, 'fail');
+                addLog(`网络错误: ${cdk} - ${e.message}`, "red");
                 await new Promise(r => setTimeout(r, 1000));
             }
         }
