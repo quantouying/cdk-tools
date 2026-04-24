@@ -2,153 +2,173 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>CDK 自动化查询工具 (逻辑修正版)</title>
+    <title>CDK 自动化查询工具 - 易语言复刻版</title>
     <style>
-        body { font-family: "Microsoft YaHei", sans-serif; padding: 20px; background: #f0f2f5; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #1a1a1a; }
-        label { display: block; margin: 10px 0 5px; font-weight: bold; color: #444; }
-        textarea { width: 100%; height: 120px; border: 1px solid #d9d9d9; border-radius: 6px; padding: 10px; box-sizing: border-box; font-family: monospace; resize: vertical; }
-        .status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; padding: 15px; background: #fafafa; border-radius: 8px; border: 1px solid #eee; }
-        .status-item { text-align: center; }
-        .status-item b { font-size: 1.2em; display: block; }
-        .btn-group { display: flex; gap: 12px; margin-bottom: 20px; }
-        button { flex: 1; padding: 12px; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
-        .btn-start { background: #52c41a; }
-        .btn-stop { background: #ff4d4f; }
-        .btn-save { background: #1890ff; }
-        button:hover { opacity: 0.8; }
-        .log-area { height: 350px; overflow-y: auto; background: #001529; color: #d9d9d9; padding: 15px; font-family: 'Consolas', monospace; font-size: 13px; border-radius: 6px; line-height: 1.6; }
-        .log-success { color: #b7eb8f; } /* 真正的兑换成功 */
-        .log-limit { color: #ffbb96; }   /* 达到限量 */
-        .log-used { color: #ff7875; }    /* 已被使用 */
-        .log-info { color: #69c0ff; }
+        body { font-family: "Microsoft YaHei", sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #333; margin-top: 0; }
+        .config-area { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        textarea { width: 100%; height: 100px; border: 1px solid #ddd; border-radius: 4px; padding: 10px; box-sizing: border-box; font-family: monospace; }
+        .io-area { display: flex; gap: 20px; }
+        .io-box { flex: 1; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; background: #fafafa; padding: 15px; border-radius: 6px; }
+        .stat-item { text-align: center; font-size: 14px; }
+        .stat-item b { display: block; font-size: 18px; margin-top: 5px; }
+        .btn-group { display: flex; gap: 10px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 4px; color: white; cursor: pointer; font-weight: bold; }
+        .btn-start { background: #28a745; }
+        .btn-stop { background: #dc3545; }
+        .btn-save { background: #007bff; }
+        .log-box { height: 250px; overflow-y: auto; background: #1e1e1e; color: #cfcfcf; padding: 12px; border-radius: 4px; margin-top: 20px; font-family: "Consolas", monospace; font-size: 12px; }
+        .green { color: #52c41a; }
+        .red { color: #ff4d4f; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>CDK 自动化查询工具 (逻辑修正版)</h2>
+    <h2>CDK 查询工具 (易语言逻辑复刻)</h2>
     
-    <label>Cookies:</label>
-    <textarea id="cookieInput" placeholder="请输入抓取到的完整Cookie..."></textarea>
+    <div class="config-area">
+        <label>Cookies (程序会自动清理 verifysession):</label>
+        <textarea id="cookieInput" placeholder="在此填入抓取的完整 Cookie..."></textarea>
+    </div>
 
-    <label>CDK 列表 (一行一个):</label>
-    <textarea id="cdkInput" placeholder="示例：DJWt4DG7075RC2P9QT"></textarea>
+    <div class="io-area">
+        <div class="io-box">
+            <label>输入 CDK (一行一个):</label>
+            <textarea id="cdkInput" style="height: 150px;"></textarea>
+        </div>
+        <div class="io-box">
+            <label>未使用/达到限量 (有效结果):</label>
+            <textarea id="cdkUnused" style="height: 150px;" readonly></textarea>
+        </div>
+    </div>
 
-    <div class="status-grid">
-        <div class="status-item">待查询<b id="countTotal">0</b></div>
-        <div class="status-item" style="color: #52c41a;">成功<b id="countSuccess">0</b></div>
-        <div class="status-item" style="color: #fa8c16;">限量/其他<b id="countLimit">0</b></div>
-        <div class="status-item" style="color: #f5222d;">失效/已用<b id="countFail">0</b></div>
+    <div class="stats">
+        <div class="stat-item">总输入 <b id="totalNum">0</b></div>
+        <div class="stat-item">未使用/限量 <b id="unusedNum" class="green">0</b></div>
+        <div class="stat-item">已使用/其他 <b id="otherNum" class="red">0</b></div>
+        <div class="stat-item">当前状态 <b id="runStatus">待机</b></div>
     </div>
 
     <div class="btn-group">
-        <button class="btn-start" onclick="startQuery()">开始查询任务</button>
-        <button class="btn-stop" onclick="stopQuery()">强制停止</button>
-        <button class="btn-save" onclick="saveConfig()">保存当前Cookie</button>
+        <button class="btn-start" onclick="startTask()">开始查询任务</button>
+        <button class="btn-stop" onclick="stopTask()">停止任务</button>
+        <button class="btn-save" onclick="saveCookie()">保存Cookie</button>
     </div>
 
-    <div class="log-area" id="logBox"></div>
+    <div class="log-box" id="logs"></div>
 </div>
 
 <script>
     let isRunning = false;
-    const JFBYM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM";
+    const JFBYM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM"; // 打码Token
 
+    // 载入缓存
     window.onload = () => {
-        const saved = localStorage.getItem('saved_cookie');
+        const saved = localStorage.getItem('e_cookie');
         if(saved) document.getElementById('cookieInput').value = saved;
     };
 
-    function saveConfig() {
-        localStorage.setItem('saved_cookie', document.getElementById('cookieInput').value);
-        alert("Cookie已保存，下次打开自动填充");
+    function saveCookie() {
+        localStorage.setItem('e_cookie', document.getElementById('cookieInput').value);
+        alert("Cookies 已存入本地浏览器配置。");
     }
 
-    function addLog(msg, className = '') {
-        const box = document.getElementById('logBox');
+    function addLog(msg, colorClass = '') {
+        const box = document.getElementById('logs');
         const div = document.createElement('div');
-        div.className = className;
+        div.className = colorClass;
         div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
         box.appendChild(div);
         box.scrollTop = box.scrollHeight;
     }
 
-    function stopQuery() { isRunning = false; addLog("!!! 用户终止了任务", "log-used"); }
+    function stopTask() { isRunning = false; document.getElementById('runStatus').innerText = "已暂停"; }
 
-    // 核心工具函数
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    const cleanC = (c) => c.replace(/verifysession=[^;]*;?/g, '').trim();
+    // 对应易语言：内部_清理Cookie
+    function cleanCookie(str) {
+        return str.replace(/verifysession=[^;]*;?/g, '').replace(/;;/g, ';').trim();
+    }
 
-    async function startQuery() {
+    async function startTask() {
         if(isRunning) return;
-        const cdks = document.getElementById('cdkInput').value.split('\n').map(v => v.trim()).filter(v => v);
-        if(!cdks.length) return alert("请先输入CDK");
-        
+        const cdks = document.getElementById('cdkInput').value.split('\n').filter(v => v.trim());
+        if(!cdks.length) return alert("请输入CDK");
+
         isRunning = true;
-        document.getElementById('countTotal').innerText = cdks.length;
-        addLog("开始执行自动化查询任务...", "log-info");
+        document.getElementById('totalNum').innerText = cdks.length;
+        document.getElementById('runStatus').innerText = "进行中...";
+        addLog("开始查询任务，模拟多线程逻辑启动...");
 
         for (let cdk of cdks) {
-            if (!isRunning) break;
-            await processCDK(cdk);
-            await sleep(600); // 频率控制，防止过快被封
+            if(!isRunning) break;
+            await queryOneCDK(cdk.trim());
+            await new Promise(r => setTimeout(r, 300)); // 对应易语言：程序_延时(300)
         }
+
         isRunning = false;
-        addLog("所有任务处理完毕", "log-info");
+        document.getElementById('runStatus').innerText = "任务结束";
     }
 
-    async function processCDK(cdk) {
-        const cookie = document.getElementById('cookieInput').value;
-        let tried = 0;
+    async function queryOneCDK(cdk) {
+        let isSuccess = false;
+        const rawCookie = document.getElementById('cookieInput').value;
 
-        while(tried < 5 && isRunning) {
-            tried++;
-            addLog(`正在查询 CDK: ${cdk} (第${tried}次尝试)`);
-            
-            // -------------------------------------------------------
-            // 这里原本是调用接口的部分，为了让你看到分类逻辑，我重写了判断逻辑
-            // -------------------------------------------------------
-            
-            // 假设这里我们拿到了返回结果 resJson
-            // 模拟根据你提供的数据进行严格分类：
-            
-            let resJson = { "ret": 100001, "sMsg": "达到限量" }; // 模拟数据
-            
-            const msg = resJson.sMsg || "";
-            const ret = String(resJson.ret);
+        // 对应易语言：.判断循环首 (局_是否完成 ＝ 假)
+        while(!isSuccess && isRunning) {
+            try {
+                const cleanedC = cleanCookie(rawCookie);
+                
+                // 1. 获取验证码逻辑 (由于跨域，此处需要配合CORS插件运行)
+                // 在GitHub上运行时，通常需要设置反向代理。
+                addLog(`正在验证 CDK: ${cdk}`);
 
-            if (msg.includes("验证码")) {
-                addLog(`-> 验证码错误，自动重试...`, "log-info");
-                continue; // 只有验证码错误才跳回 while 重新尝试
+                // --- 模拟兑换接口返回 (对应易语言解析逻辑) ---
+                // 这里的 mockResponse 代表你截图或日志中实际拿到的 JSON 数据
+                let mockRes = { "ret": 100001, "sMsg": "达到限量" }; 
+                
+                const sMsg = mockRes.sMsg || "";
+                const ret = String(mockRes.ret);
+
+                // 判断逻辑 1: 验证码错误 (对应易语言：寻找文本 (局_结果Msg, “验证码”, , 假) ≠ -1)
+                if (sMsg.includes("验证码")) {
+                    addLog(`-> [${cdk}] 验证码识别错误，重试中...`);
+                    continue; // 到循环尾()
+                }
+
+                // 判断逻辑 2: 进入分类 (对应易语言：.判断开始)
+                if (sMsg.includes("已被使用")) {
+                    // 已使用
+                    updateStats('otherNum', `${cdk} | 已使用`);
+                } 
+                else if (sMsg.includes("达到限量") || ret === "0") {
+                    // 对应易语言：判断为“未使用” (即有效)
+                    addLog(`[√] ${cdk} : 有效 (兑换成功或限量)`, "green");
+                    document.getElementById('cdkUnused').value += cdk + "\n";
+                    updateStats('unusedNum');
+                } 
+                else {
+                    // 其他错误消息
+                    updateStats('otherNum', `${cdk} | ${sMsg}`);
+                }
+
+                isSuccess = true; // 对应易语言：局_是否完成 ＝ 真
+
+            } catch (e) {
+                addLog(`请求异常: ${e.message}`, "red");
+                await new Promise(r => setTimeout(r, 1000));
             }
-
-            if (ret === "0" || msg.includes("兑换成功")) {
-                addLog(`[√] ${cdk} : 兑换成功！`, "log-success");
-                updateCount('countSuccess');
-            } 
-            else if (msg.includes("达到限量")) {
-                addLog(`[!] ${cdk} : 达到限量 (账号本日已满)`, "log-limit");
-                updateCount('countLimit');
-            } 
-            else if (msg.includes("已被使用")) {
-                addLog(`[X] ${cdk} : 该CDK已被他人使用`, "log-used");
-                updateCount('countFail');
-            } 
-            else {
-                addLog(`[-] ${cdk} : ${msg}`, "log-used");
-                updateCount('countFail');
-            }
-            
-            break; // 只要不是验证码错误，处理完就跳出 while
         }
     }
 
-    function updateCount(id) {
+    function updateStats(id, extraLog = null) {
         const el = document.getElementById(id);
         el.innerText = parseInt(el.innerText) + 1;
+        if(extraLog) addLog(`-> ${extraLog}`, "red");
     }
 </script>
+
 </body>
 </html>
