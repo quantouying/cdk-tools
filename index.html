@@ -37,79 +37,105 @@
 </div>
 
 <script>
+    // 使用公共代理解决跨域
     const PROXY = "https://cors-anywhere.herokuapp.com/"; 
-    const p1 = "NrVeqp40ncGvQy5"; const p2 = "wHKT_NOd6ljB9aO"; const p3 = "abjduKHrNlFGM";
-    const DM_TOKEN = p1 + p2 + p3; 
+    const DM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM"; 
+
+    function addLog(text) {
+        document.getElementById('statusLog').innerText = `状态：${text}`;
+    }
 
     async function run() {
         const roleId = document.getElementById('roleIdInput').value.trim();
-        const rawCookies = document.getElementById('cookieInput').value.trim();
+        let rawCookies = document.getElementById('cookieInput').value.trim();
         const cdkList = document.getElementById('cdkInput').value.split('\n').filter(s => s.trim() !== "");
         
         if (!roleId || !rawCookies) return alert("参数不全！");
+        
+        // 预处理：确保 Cookie 结尾有分号，方便后续拼接
+        if (!rawCookies.endsWith(';')) rawCookies += ';';
+
         const btn = document.getElementById('startBtn');
         btn.disabled = true;
 
         for (let cdk of cdkList) {
             try {
-                document.getElementById('statusLog').innerText = `状态：正在获取验证码...`;
+                addLog(`正在获取 [${cdk}] 的验证码...`);
                 
                 // 1. 获取验证码图片
                 const imgRes = await axios.get(PROXY + "https://ssl.captcha.qq.com/getimage?aid=21000104&r=" + Math.random(), { 
-                    responseType: 'arraybuffer', headers: { 'Cookie': rawCookies } 
+                    responseType: 'arraybuffer', 
+                    headers: { 'Cookie': rawCookies } 
                 });
-                const setCookie = imgRes.headers['set-cookie'] || [];
-                const vSession = setCookie.find(s => s.includes('verifysession'))?.split(';')[0] || "";
-                const vSessionVal = vSession.split('=')[1] || "";
+
+                // 提取 verifysession
+                const setCookieHeaders = imgRes.headers['set-cookie'] || [];
+                let vSessionPair = setCookieHeaders.find(s => s.includes('verifysession'))?.split(';')[0] || "";
+                let vSessionVal = vSessionPair.split('=')[1] || "";
+
+                if(!vSessionVal) {
+                    addLog("获取 Session 失败，请检查 Cookie 是否有效");
+                    break;
+                }
 
                 // 2. 识别验证码
-                document.getElementById('statusLog').innerText = `状态：识别中...`;
+                addLog(`识别中 (Session: ${vSessionVal})...`);
                 const base64Img = btoa(new Uint8Array(imgRes.data).reduce((d, b) => d + String.fromCharCode(b), ''));
                 const capRes = await axios.post(PROXY + "http://api.jfbym.com/api/YmServer/customApi", {
                     token: DM_TOKEN, type: "10110", image: base64Img
                 });
                 const code = capRes.data?.data?.data || capRes.data?.data;
 
-                // 3. 提交同步参数 (完全匹配你提供的封包)
-                document.getElementById('statusLog').innerText = `状态：正在提交查询...`;
+                if(!code) {
+                    addLog("打码平台未返回结果，跳过此条");
+                    continue;
+                }
+
+                // 3. 提交查询 (强化验证参数)
+                addLog(`识别成功 [${code}]，提交验证...`);
                 const params = new URLSearchParams();
                 params.append('iChartId', '318157');
-                params.append('iSubChartId', '318157');
-                params.append('sIdeToken', 'Xn1xVR');
                 params.append('sCdKey', cdk.trim());
                 params.append('sVerifyCode', code);
                 params.append('verifysession', vSessionVal);
                 params.append('isExchange', '1');
                 params.append('sRoleId', roleId);
                 params.append('sArea', '36');
-                // 下面是封包里的关键校验位
-                params.append('sMiloTag', 'AMS-dfm-0423154212-YDPptO-662511-1063242');
-                params.append('ams_targetappid', 'wx39308a0a1bd83d22');
                 params.append('sMd5str', '21F66497921BE8DF59455A70CB119716');
                 params.append('md5str', '21F66497921BE8DF59455A70CB119716');
-                params.append('sMdStr', '21F66497921BE8DF59455A70CB119716');
-                params.append('sCheckparam', `dfm|yes|${roleId}|36|${roleId}*|${roleId}|0||9%E6%99%BA%E8%83%BE%E7%9A%BA%E5%A5%A5%E5%88%A9%E5%A5%A57*|||1776926243|`);
+
+                // 组合最终发送的 Cookie 串，确保包含最新的 verifysession
+                const finalCookie = `${rawCookies} verifysession=${vSessionVal};`;
 
                 const res = await axios.post(PROXY + "https://dfm.ams.game.qq.com/ide/", params, {
                     headers: { 
-                        'Cookie': rawCookies + "; " + vSession,
-                        'Referer': 'https://df.qq.com/cp/a20240812cdk/index.html'
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Cookie': finalCookie,
+                        'Referer': 'https://df.qq.com/'
                     }
                 });
 
-                const msg = res.data.sMsg || `返回码:${res.data.ret}`;
-                // 根据反馈修正逻辑：-2007 视为未使用
-                const isOk = res.data.ret == 0 || res.data.ret == -2007 || msg.includes("未使用");
-                
+                const msg = res.data.sMsg || "无返回内容";
+                const ret = res.data.ret;
+
+                // 判断逻辑
+                if (msg.includes("登录") || ret == -10001) {
+                    addLog("提示登录失效，请更新 Cookie！");
+                    document.getElementById('box2').innerText += `${cdk} | 失败: 登录已过期\n`;
+                    break; 
+                }
+
+                const isOk = ret == 0 || msg.includes("成功") || msg.includes("限量");
                 document.getElementById(isOk ? 'box1' : 'box2').innerText += `${cdk} | ${msg}\n`;
 
             } catch (e) {
+                addLog(`异常: ${e.message}`);
                 document.getElementById('box2').innerText += `${cdk} | 错误: ${e.message}\n`;
             }
             await new Promise(r => setTimeout(r, 2000));
         }
         btn.disabled = false;
-        document.getElementById('statusLog').innerText = "状态：任务全部完成";
+        addLog("任务全部完成");
     }
 </script>
 </body>
