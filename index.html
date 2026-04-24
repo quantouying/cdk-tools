@@ -1,120 +1,157 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <title>三角洲 CDK 自动化查询 - 2026同步版</title>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <style>
-        :root { --primary: #007bff; --success: #28a745; --danger: #dc3545; }
-        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .status { font-weight: bold; color: var(--primary); margin: 10px 0; padding: 10px; background: #e7f1ff; border-radius: 5px; }
-        textarea, input { width: 100%; box-sizing: border-box; padding: 10px; margin-top: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; }
-        button { width: 100%; padding: 15px; background: var(--primary); color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        button:disabled { background: #ccc; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }
-        .res-box { height: 300px; border: 1px solid #eee; overflow-y: auto; padding: 10px; font-size: 12px; white-space: pre-wrap; background: #fafafa; }
-    </style>
-</head>
-<body>
+import requests
+import base64
+import time
+import re
+import threading
+import json
+from queue import Queue
 
-<div class="container">
-    <h2>三角洲官网协议查询 (优化版)</h2>
-    <p style="font-size: 12px; color: #666;">提示：如遇跨域报错，请将下方 JS 代码直接复制到官网 F12 控制台运行。</p>
-    
-    <label>1. 角色 RoleId</label>
-    <input type="text" id="roleId" value="8864086924640301525">
+# ================= 配置区域 =================
+COOKIES = "这里填入你的完整Cookie内容"
+CDK_FILE = "cdk.txt"  # 存放CDK的文件，一行一个
+JFBYM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM"  # 你的打码平台Token
+THREAD_COUNT = 5  # 并发线程数
+# ===========================================
 
-    <label style="display:block; margin-top:10px;">2. CDK 列表 (每行一个)</label>
-    <textarea id="cdks" rows="5" placeholder="粘贴 CDK..."></textarea>
-
-    <div id="log" class="status">状态：就绪</div>
-    <button id="btn" onclick="start()">开始自动化同步查询</button>
-
-    <div class="grid">
-        <div>
-            <div style="color:var(--success)">未使用/限量 (-2007)</div>
-            <div id="box1" class="res-box"></div>
-        </div>
-        <div>
-            <div style="color:var(--danger)">已领/报错/其他</div>
-            <div id="box2" class="res-box"></div>
-        </div>
-    </div>
-</div>
-
-<script>
-    // 打码配置
-    const DM_TOKEN = "NrVeqp40ncGvQy5wHKT_NOd6ljB9aOabjduKHrNlFGM";
-
-    async function start() {
-        const roleId = document.getElementById('roleId').value.trim();
-        const cdkList = document.getElementById('cdks').value.split('\n').filter(s => s.trim());
-        const log = document.getElementById('log');
-        const btn = document.getElementById('btn');
-
-        if (cdkList.length === 0) return alert("请输入 CDK");
-        btn.disabled = true;
-
-        for (let cdk of cdkList) {
-            cdk = cdk.trim();
-            log.innerText = `正在处理：${cdk}`;
-
-            try {
-                // 1. 获取验证码
-                // 注意：在 HTML 环境下此处可能触发 CORS，如果在官网控制台运行则 100% 成功
-                const imgRes = await axios.get(`https://ssl.captcha.qq.com/getimage?aid=21000104&r=${Math.random()}`, { responseType: 'arraybuffer' });
-                const base64 = btoa(new Uint8Array(imgRes.data).reduce((data, byte) => data + String.fromCharCode(byte), ''));
-
-                // 2. 识别验证码
-                const capRes = await axios.post("http://api.jfbym.com/api/YmServer/customApi", {
-                    token: DM_TOKEN, type: "10110", image: base64
-                });
-                const code = capRes.data?.data?.data || capRes.data?.data;
-
-                if (!code) throw new Error("验证码识别失败");
-
-                // 3. 构建 04/23 最新同步协议参数
-                const ts = Math.floor(Date.now() / 1000);
-                const params = new URLSearchParams({
-                    iChartId: "318157",
-                    iSubChartId: "318157",
-                    sIdeToken: "Xn1xVR",
-                    sCdKey: cdk,
-                    sVerifyCode: code,
-                    isExchange: "1",
-                    sRoleId: roleId,
-                    sArea: "36",
-                    sMd5str: "21F66497921BE8DF59455A70CB119716", // 核心固定 MD5
-                    md5str: "21F66497921BE8DF59455A70CB119716",
-                    sCheckparam: `dfm|yes|${roleId}|36|${roleId}*|${roleId}|0|||${ts}|`,
-                    iVerifyId: "21000104"
-                });
-
-                // 4. 提交查询 (官网环境无需手动带 Cookie)
-                const res = await axios.post("https://dfm.ams.game.qq.com/ide/", params);
-                
-                const ret = res.data.ret;
-                const msg = res.data.sMsg || "无返回信息";
-
-                // 5. 结果归类
-                if (ret == 0 || ret == -2007) {
-                    document.getElementById('box1').innerText += `${cdk} | ${msg}\n`;
-                } else {
-                    document.getElementById('box2').innerText += `${cdk} | ${msg}\n`;
-                }
-
-            } catch (e) {
-                document.getElementById('box2').innerText += `${cdk} | 运行错误: ${e.message}\n`;
-            }
-
-            // 6. 强制延时 3 秒，解决 429 报错问题
-            await new Promise(r => setTimeout(r, 3000));
+class CDKQuerier:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.results = {"未使用": [], "已使用/其他": [], "失败": []}
+        self.session = requests.Session()
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Referer": "https://df.qq.com/cp/a20240812cdk/index.html",
+            "Origin": "https://df.qq.com"
         }
 
-        log.innerText = "处理结束";
-        btn.disabled = false;
-    }
-</script>
-</body>
-</html>
+    def clean_cookie(self, cookie_str):
+        """对应易语言：内部_清理Cookie"""
+        # 移除 verifysession 字段
+        cleaned = re.sub(r'verifysession=[^;]*;?', '', cookie_str)
+        return cleaned.strip().strip(';')
+
+    def get_captcha(self, current_cookie):
+        """对应易语言：获取验证码图片"""
+        img_url = f"https://ssl.captcha.qq.com/getimage?aid=21000104&r=0.{int(time.time()*1000)}"
+        headers = self.headers.copy()
+        headers["Host"] = "ssl.captcha.qq.com"
+        
+        try:
+            resp = self.session.get(img_url, headers=headers, cookies={"Cookie": current_cookie}, timeout=10)
+            # 从返回头获取新的 verifysession
+            v_session = resp.cookies.get("verifysession") or ""
+            if not v_session and "Set-Cookie" in resp.headers:
+                match = re.search(r'verifysession=([^;]+)', resp.headers["Set-Cookie"])
+                if match: v_session = match.group(1)
+            
+            return resp.content, v_session
+        except:
+            return None, ""
+
+    def ocr_captcha(self, img_data):
+        """对应易语言：功能_自动识别"""
+        url = "http://api.jfbym.com/api/YmServer/customApi"
+        payload = {
+            "token": JFBYM_TOKEN,
+            "type": "10110",
+            "image": base64.b64encode(img_data).decode()
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=10).json()
+            # 暴力提取逻辑
+            code = resp.get("data", {}).get("data", "") or resp.get("data", "")
+            return str(code).strip()
+        except:
+            return ""
+
+    def query_task(self, cdk_queue):
+        while not cdk_queue.empty():
+            cdk = cdk_queue.get()
+            success = False
+            
+            while not success:
+                # 1. 清理并准备环境
+                clean_c = self.clean_cookie(COOKIES)
+                
+                # 2. 获取图片
+                img_data, v_session = self.get_captcha(clean_c)
+                if not img_data or len(img_data) < 500:
+                    time.sleep(1)
+                    continue
+                
+                # 3. 识别
+                code = self.ocr_captcha(img_data)
+                if len(code) < 4:
+                    continue
+
+                # 4. 提交兑换 (根据你提供的POST数据构造)
+                post_data = {
+                    "iChartId": "318157",
+                    "iSubChartId": "318157",
+                    "sIdeToken": "Xn1xVR",
+                    "sCdKey": cdk,
+                    "sVerifyCode": code,
+                    "verifysession": v_session,
+                    "sCdkey": cdk,
+                    "isExchange": "1",
+                    "sRoleId": "8864086924640301525", # 注意：这里建议从Cookie或接口动态获取
+                    "sArea": "36",
+                    "sRoleName": "9%25E6%2599%25BA%25E8%2583%25BD%25E7%259A%2584%25E5%25A5%25A5%25E5%2588%25A9%25E5%25A5%25A57",
+                    "md5str": "58C1C07530FDB167602808EC5AAA1B80", # 这个MD5通常是动态生成的，如果是固定则直接用
+                    "iVerifyId": "21000104"
+                }
+
+                try:
+                    res = self.session.post("https://dfm.ams.game.qq.com/ide/", 
+                                          data=post_data, 
+                                          headers=self.headers, 
+                                          cookies={"Cookie": f"{clean_c}; verifysession={v_session}"},
+                                          timeout=10)
+                    res_json = res.json()
+                    msg = res_json.get("sMsg", "")
+                    ret = str(res_json.get("ret", ""))
+
+                    # 5. 结果分类处理
+                    with self.lock:
+                        if "验证码" in msg:
+                            print(f"[*] CDK: {cdk} 验证码错误，重试中...")
+                            continue # 重新进入判断循环
+                        
+                        success = True # 只有验证码正确才跳出重试
+                        if "达到限量" in msg or ret == "0":
+                            print(f"[+] {cdk} -> 有效/达到限量")
+                            self.results["未使用"].append(cdk)
+                        elif "已被使用" in msg:
+                            print(f"[-] {cdk} -> 已使用")
+                            self.results["已使用/其他"].append(f"{cdk} | 已使用")
+                        else:
+                            print(f"[?] {cdk} -> {msg}")
+                            self.results["已使用/其他"].append(f"{cdk} | {msg}")
+                except Exception as e:
+                    print(f"[!] 网络错误: {e}")
+                    time.sleep(1)
+            
+            cdk_queue.task_done()
+
+    def run(self):
+        # 读取CDK
+        with open(CDK_FILE, "r") as f:
+            cdks = [line.strip() for line in f if line.strip()]
+        
+        q = Queue()
+        for c in cdks: q.put(c)
+
+        print(f"开始查询，共 {len(cdks)} 个CDK...")
+        for _ in range(THREAD_COUNT):
+            t = threading.Thread(target=self.query_task, args=(q,))
+            t.daemon = True
+            t.start()
+        
+        q.join()
+        print("\n--- 查询结束 ---")
+        print(f"未使用: {len(self.results['未使用'])}")
+        # 可以在这里增加保存到文件的代码
+
+if __name__ == "__main__":
+    app = CDKQuerier()
+    app.run()
